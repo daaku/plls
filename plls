@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+
+import os
+import logging as log
+from optparse import OptionParser
+
+from appscript import app, k
+from mactypes import Alias
+
+__version__ = "0.1"
+
+itunes = app("iTunes")
+
+def mkfolderp(parts):
+    folders = itunes.folder_playlists()
+    last_part = None
+    make_rest = False
+    for part in parts:
+        if not make_rest:
+            found = False
+            for f in folders:
+                if not found:
+                    name = f.name()
+                    if part == name:
+                        try:
+                            if last_part is None or last_part == f.parent():
+                                last_part = f
+                                found = True
+                        except: pass
+            if found:
+                continue
+        # not found, make this and every remaining part as a new folder
+        make_rest = True
+        last_part = itunes.make(
+            new = k.folder_playlist,
+            at = last_part or itunes,
+            with_properties = {k.name:part},
+        )
+    return last_part
+
+def find_or_create_playlist(path):
+    parts = path.split("/")
+    name = parts[-1]
+    folder = mkfolderp(parts[:-1])
+    for playlist in itunes.user_playlists():
+        if playlist.name() == name and playlist.parent() == folder:
+            return playlist
+    return itunes.make(
+        new = k.playlist,
+        at = folder,
+        with_properties = {k.name:name},
+    )
+
+def create_playlist(path, *files):
+    playlist = find_or_create_playlist(path)
+    for file in files:
+        itunes.add(Alias(file), to=playlist)
+
+def main():
+    usage = "usage: %%prog [Playlist Name] [Files...]"
+    parser = OptionParser(usage=usage, version="%prog-" + __version__)
+    (options, args) = parser.parse_args()
+    create_playlist(*args)
+
+if __name__ == "__main__":
+    main()
